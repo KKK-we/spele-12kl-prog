@@ -14,14 +14,12 @@ CLOCK = pygame.time.Clock()
 # Krāsas
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-BLUE = (0, 0, 255)
-RED = (255, 0, 0)
-YELLOW = (255, 255, 0)
 GRAY = (200, 200, 200)
+YELLOW = (255, 255, 0)
 
 font = pygame.font.SysFont("Arial", 25)
 
-# Lielāka karte: 1 = siena, 0 = ceļš
+# Karte: 1 = siena, 0 = ceļš
 MAP = [
     "1111111111111111111111111",
     "1000000000000010000000001",
@@ -46,29 +44,6 @@ ROWS = len(MAP)
 COLS = len(MAP[0])
 TILE = min(SCREEN_WIDTH // COLS, (SCREEN_HEIGHT - HUD_HEIGHT) // ROWS)
 
-class Player:
-    def __init__(self):
-        self.rect = pygame.Rect(TILE + TILE // 2, HUD_HEIGHT + TILE * 5 + TILE // 2, TILE - 10, TILE - 10)
-        self.speed = 8
-    # ... pārējās metodes ...
-
-class Enemy:
-    def __init__(self, x, y):
-        self.rect = pygame.Rect(x, y, TILE - 10, TILE - 10)
-        self.speed = 4
-    # ... pārējās metodes ...
-
-# Player sākuma pozīcija (uz ceļa, nevis sienas)
-player = Player()
-player.rect.center = (TILE * 12, HUD_HEIGHT + TILE * 9)
-
-# Enemy sākuma pozīcijas (divās dažādās vietās)
-enemies = [
-    Enemy(TILE * 2, HUD_HEIGHT + TILE * 1),
-    Enemy(TILE * 22, HUD_HEIGHT + TILE * 7)
-]
-
-
 # Obstacles un dots
 obstacles = []
 dots = []
@@ -80,11 +55,30 @@ for r, row in enumerate(MAP):
         else:
             dots.append(pygame.Rect(x + TILE // 2 - 5, y + TILE // 2 - 5, 10, 10))
 
-# Player klase
+
+# -------- Helper: atrast drošu spawn --------
+def get_random_spawn(size, avoid_rect=None):
+    while True:
+        r = random.randint(0, ROWS - 1)
+        c = random.randint(0, COLS - 1)
+        if MAP[r][c] == "0":  # tikai uz ceļa
+            rect = pygame.Rect(
+                c * TILE + TILE // 2 - size // 2,
+                HUD_HEIGHT + r * TILE + TILE // 2 - size // 2,
+                size, size
+            )
+            if avoid_rect and rect.colliderect(avoid_rect):
+                continue  # neliek player vietā
+            return rect
+
+
+# -------- Klases --------
 class Player:
     def __init__(self):
-        self.rect = pygame.Rect(TILE + TILE // 2, HUD_HEIGHT + TILE * 5 + TILE // 2, TILE - 10, TILE - 10)
+        self.rect = get_random_spawn(TILE - 10)
         self.speed = 8
+        self.color = (0, 0, 255)
+        self.last_color_change = time.time()
 
     def move(self, keys):
         dx = dy = 0
@@ -104,14 +98,20 @@ class Player:
             if self.rect.colliderect(ob):
                 self.rect.y -= dy
 
-    def draw(self, win):
-        pygame.draw.rect(win, BLUE, self.rect)
+    def update_color(self):
+        if time.time() - self.last_color_change > 0.5:  # maina krāsu ik pēc 0.5s
+            self.color = (random.randint(50, 255), random.randint(50, 255), random.randint(50, 255))
+            self.last_color_change = time.time()
 
-# Enemy klase (vienkāršs AI – seko player)
+    def draw(self, win):
+        pygame.draw.rect(win, self.color, self.rect)
+
+
 class Enemy:
-    def __init__(self, x, y):
-        self.rect = pygame.Rect(x, y, TILE - 10, TILE - 10)
-        self.speed = 4
+    def __init__(self, speed, color, avoid_rect):
+        self.rect = get_random_spawn(TILE - 10, avoid_rect)
+        self.speed = speed
+        self.color = color
 
     def move(self, player):
         dx = dy = 0
@@ -136,13 +136,17 @@ class Enemy:
                 self.rect.y -= dy
 
     def draw(self, win):
-        pygame.draw.rect(win, RED, self.rect)
+        pygame.draw.rect(win, self.color, self.rect)
 
-# Init objekti
+
+# -------- Init --------
 player = Player()
+
 enemies = [
-    Enemy(TILE * 10, HUD_HEIGHT + TILE * 1),
-    Enemy(TILE * 20, HUD_HEIGHT + TILE * 7)
+    Enemy(2, (255, 0, 0), player.rect),      # sarkans
+    Enemy(3, (0, 255, 0), player.rect),      # zaļš
+    Enemy(4, (255, 165, 0), player.rect),    # oranžs
+    Enemy(5, (128, 0, 128), player.rect)     # violets
 ]
 
 score = 0
@@ -150,7 +154,8 @@ last_score_time = time.time()
 start_time = time.time()
 PAUSED = False
 
-# Spēles cikls
+
+# -------- Spēles cikls --------
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -162,6 +167,7 @@ while True:
     if not PAUSED:
         keys = pygame.key.get_pressed()
         player.move(keys)
+        player.update_color()
 
         for e in enemies:
             e.move(player)
@@ -182,15 +188,12 @@ while True:
             if player.rect.colliderect(e.rect):
                 score = 0
                 player = Player()
-                dots = []
-                for r, row in enumerate(MAP):
-                    for c, t in enumerate(row):
-                        if t == "0":
-                            dots.append(pygame.Rect(
-                                c * TILE + TILE // 2 - 5,
-                                HUD_HEIGHT + r * TILE + TILE // 2 - 5,
-                                10, 10
-                            ))
+                enemies = [
+                    Enemy(2, (255, 0, 0), player.rect),
+                    Enemy(3, (0, 255, 0), player.rect),
+                    Enemy(4, (255, 165, 0), player.rect),
+                    Enemy(5, (128, 0, 128), player.rect)
+                ]
                 break
 
         # Zīmēšana
@@ -212,12 +215,7 @@ while True:
         WIN.blit(font.render(f"Time: {elapsed_time}s", True, BLACK), (SCREEN_WIDTH - 150, 10))
 
     else:
-        WIN.blit(font.render("PAUSE - ESC to resume", True, RED), (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2))
+        WIN.blit(font.render("PAUSE - ESC to resume", True, (255, 0, 0)), (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2))
 
     pygame.display.update()
     CLOCK.tick(FPS)
-
-
-
-
-
